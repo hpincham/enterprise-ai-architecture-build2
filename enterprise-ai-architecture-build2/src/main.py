@@ -1,10 +1,13 @@
-import time
-import logging
-from fastapi import FastAPI, Request, HTTPException
+import os
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
+from dotenv import load_dotenv
+
+from src.openai_client import get_aoai_client
+
+load_dotenv()  # loads .env for local dev
 
 app = FastAPI(title="Enterprise AI Gateway (Build 2)")
-log = logging.getLogger("enterprise-ai-gateway")
 
 class ChatRequest(BaseModel):
     prompt: str = Field(min_length=1)
@@ -15,9 +18,20 @@ def health():
     return {"status": "ok", "build": 2}
 
 @app.post("/chat")
-async def chat(req: Request, body: ChatRequest):
-    if len(body.prompt) > 4000:
-        raise HTTPException(status_code=400, detail="Prompt too long")
+def chat(body: ChatRequest):
+    deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT")
+    if not deployment:
+        raise HTTPException(status_code=500, detail="AZURE_OPENAI_DEPLOYMENT not set")
 
-    # Stubbed response for now
-    return {"response": f"[stubbed] You said: {body.prompt}", "model": "stub"}
+    client = get_aoai_client()
+
+    resp = client.chat.completions.create(
+        model=deployment,  # Azure uses DEPLOYMENT NAME here
+        messages=[{"role": "user", "content": body.prompt}],
+        max_tokens=body.max_tokens,
+    )
+
+    return {
+        "response": resp.choices[0].message.content,
+        "model": deployment,
+    }
